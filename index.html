@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Barcode Scanner</title>
-    <script src="https://unpkg.com/@AceCentre/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -279,7 +279,7 @@
     </div>
 
     <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin</div>
-    <div class="version">v6.0</div>
+    <div class="version">v6.1</div>
 
     <div class="controls">
         <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
@@ -382,6 +382,7 @@
                 startCollectTimer();
             }).catch(function(err) {
                 document.getElementById('statusMsg').textContent = 'Camera error: ' + err;
+                document.getElementById('startBtn').style.display = 'inline-block';
             });
         }
 
