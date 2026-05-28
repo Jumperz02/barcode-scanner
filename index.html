@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Barcode Scanner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #16213e;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        header h1 {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .badge {
+            background: #0f3460;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+
+        .scanner-section {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            background: #000;
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+        }
+
+        .scan-overlay {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 3px;
+            background: #e94560;
+            box-shadow: 0 0 10px #e94560;
+            transform: translateY(-50%);
+            animation: scan 2s ease-in-out infinite;
+        }
+
+        @keyframes scan {
+            0%, 100% { top: 30%; }
+            50% { top: 70%; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            padding: 12px 16px;
+            justify-content: center;
+            background: #16213e;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .btn-primary {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #0f3460;
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #c0392b;
+            color: #fff;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .last-scan {
+            background: #16213e;
+            margin: 10px 16px;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #e94560;
+            display: none;
+        }
+
+        .last-scan.visible {
+            display: block;
+        }
+
+        .last-scan .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .last-scan .value {
+            font-size: 1.1rem;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .last-scan .format {
+            font-size: 0.75rem;
+            color: #e94560;
+            margin-top: 4px;
+        }
+
+        .scan-list-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0 16px 16px;
+            overflow: hidden;
+        }
+
+        .scan-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+        }
+
+        .scan-list-header h2 {
+            font-size: 1rem;
+        }
+
+        .scan-list {
+            flex: 1;
+            overflow-y: auto;
+            border-radius: 8px;
+            background: #16213e;
+        }
+
+        .scan-item {
+            padding: 12px;
+            border-bottom: 1px solid #1a1a2e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .scan-item:last-child {
+            border-bottom: none;
+        }
+
+        .scan-item .info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .scan-item .barcode-value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .scan-item .meta {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .scan-item .delete-btn {
+            background: none;
+            border: none;
+            color: #e94560;
+            font-size: 1.2rem;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #555;
+        }
+
+        .empty-state .icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .export-bar {
+            padding: 12px 16px;
+            background: #16213e;
+            display: flex;
+            gap: 10px;
+        }
+
+        .export-bar button {
+            flex: 1;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #27ae60;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        .manual-input {
+            display: flex;
+            gap: 8px;
+            padding: 10px 16px;
+            background: #16213e;
+        }
+
+        .manual-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 0.9rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .manual-input input::placeholder {
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>&#128225; Barcode Scanner</h1>
+        <span class="badge" id="countBadge">0 scans</span>
+    </header>
+
+    <div class="scanner-section">
+        <video id="video" autoplay playsinline></video>
+        <div class="scan-overlay" id="scanOverlay"></div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
+        <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" style="display:none;">Stop Camera</button>
+    </div>
+
+    <div class="last-scan" id="lastScan">
+        <div class="label">Last Scanned</div>
+        <div class="value" id="lastValue"></div>
+        <div class="format" id="lastFormat"></div>
+    </div>
+
+    <div class="manual-input">
+        <input type="text" id="manualInput" placeholder="Or type barcode manually...">
+        <button class="btn-success" onclick="addManual()">Add</button>
+    </div>
+
+    <div class="scan-list-section">
+        <div class="scan-list-header">
+            <h2>Scan History</h2>
+            <button class="btn-danger" onclick="clearAll()" style="padding:6px 12px;font-size:0.75rem;">Clear All</button>
+        </div>
+        <div class="scan-list" id="scanList">
+            <div class="empty-state" id="emptyState">
+                <div class="icon">&#128247;</div>
+                <div>No barcodes scanned yet.<br>Point your camera at a barcode to begin.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="export-bar">
+        <button class="btn-secondary" onclick="exportCSV()">&#128196; Export CSV</button>
+        <button class="btn-secondary" onclick="copyAll()">&#128203; Copy All</button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let scans = JSON.parse(localStorage.getItem('barcode_scans') || '[]');
+        let stream = null;
+        let barcodeDetector = null;
+        let scanning = false;
+        let scanInterval = null;
+
+        renderList();
+        updateBadge();
+
+        async function startScanner() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                await video.play();
+
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.getElementById('scanOverlay').style.display = 'block';
+
+                if ('BarcodeDetector' in window) {
+                    const formats = await BarcodeDetector.getSupportedFormats();
+                    barcodeDetector = new BarcodeDetector({ formats });
+                    scanning = true;
+                    detectBarcode();
+                } else {
+                    showToast('BarcodeDetector not supported. Use manual entry.');
+                }
+            } catch (err) {
+                showToast('Camera access denied: ' + err.message);
+            }
+        }
+
+        function stopScanner() {
+            scanning = false;
+            if (scanInterval) {
+                clearTimeout(scanInterval);
+                scanInterval = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+            const video = document.getElementById('video');
+            video.srcObject = null;
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('scanOverlay').style.display = 'none';
+        }
+
+        async function detectBarcode() {
+            if (!scanning) return;
+            const video = document.getElementById('video');
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                try {
+                    const barcodes = await barcodeDetector.detect(video);
+                    if (barcodes.length > 0) {
+                        for (const barcode of barcodes) {
+                            addScan(barcode.rawValue, barcode.format);
+                        }
+                    }
+                } catch (e) {
+                    // detection error, continue
+                }
+            }
+            scanInterval = setTimeout(detectBarcode, 500);
+        }
+
+        function addScan(value, format) {
+            // Avoid duplicates within last 3 seconds
+            const now = Date.now();
+            const recent = scans.find(s => s.value === value && (now - s.timestamp) < 3000);
+            if (recent) return;
+
+            const scan = {
+                value: value,
+                format: format || 'manual',
+                timestamp: now,
+                id: now + '_' + Math.random().toString(36).substr(2, 5)
+            };
+            scans.unshift(scan);
+            save();
+            renderList();
+            updateBadge();
+            showLastScan(scan);
+            showToast('Scanned: ' + value);
+
+            // Vibrate feedback
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+
+        function addManual() {
+            const input = document.getElementById('manualInput');
+            const val = input.value.trim();
+            if (val) {
+                addScan(val, 'manual');
+                input.value = '';
+            }
+        }
+
+        // Allow Enter key for manual input
+        document.getElementById('manualInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') addManual();
+        });
+
+        function showLastScan(scan) {
+            const el = document.getElementById('lastScan');
+            el.classList.add('visible');
+            document.getElementById('lastValue').textContent = scan.value;
+            document.getElementById('lastFormat').textContent = scan.format.toUpperCase();
+        }
+
+        function deleteScan(id) {
+            scans = scans.filter(s => s.id !== id);
+            save();
+            renderList();
+            updateBadge();
+        }
+
+        function clearAll() {
+            if (confirm('Clear all scanned barcodes?')) {
+                scans = [];
+                save();
+                renderList();
+                updateBadge();
+                document.getElementById('lastScan').classList.remove('visible');
+            }
+        }
+
+        function renderList() {
+            const list = document.getElementById('scanList');
+            if (scans.length === 0) {
+                list.innerHTML = `<div class="empty-state" id="emptyState">
+                    <div class="icon">&#128247;</div>
+                    <div>No barcodes scanned yet.<br>Point your camera at a barcode to begin.</div>
+                </div>`;
+                return;
+            }
+            list.innerHTML = scans.map(s => `
+                <div class="scan-item">
+                    <div class="info">
+                        <div class="barcode-value">${escapeHtml(s.value)}</div>
+                        <div class="meta">${s.format.toUpperCase()} &bull; ${formatTime(s.timestamp)}</div>
+                    </div>
+                    <button class="delete-btn" onclick="deleteScan('${s.id}')">&times;</button>
+                </div>
+            `).join('');
+        }
+
+        function exportCSV() {
+            if (scans.length === 0) { showToast('Nothing to export'); return; }
+            let csv = 'Barcode,Format,Timestamp\n';
+            scans.forEach(s => {
+                csv += `"${s.value}","${s.format}","${new Date(s.timestamp).toISOString()}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'barcodes_' + new Date().toISOString().slice(0,10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV exported!');
+        }
+
+        function copyAll() {
+            if (scans.length === 0) { showToast('Nothing to copy'); return; }
+            const text = scans.map(s => s.value).join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Copied ' + scans.length + ' barcodes!');
+            });
+        }
+
+        function save() {
+            localStorage.setItem('barcode_scans', JSON.stringify(scans));
+        }
+
+        function updateBadge() {
+            document.getElementById('countBadge').textContent = scans.length + ' scan' + (scans.length !== 1 ? 's' : '');
+        }
+
+        function formatTime(ts) {
+            const d = new Date(ts);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString();
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+    </script>
+</body>
+</html>
