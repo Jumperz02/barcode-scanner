@@ -44,34 +44,43 @@
             overflow: hidden;
         }
 
-        #video {
+        #scanner-container {
             width: 100%;
-            display: block;
-        }
-
-        #captureCanvas {
-            display: none;
-        }
-
-        .overlay-container {
+            min-height: 250px;
             position: relative;
-            width: 100%;
-            max-width: 500px;
-            margin: 0 auto;
-            display: none;
         }
 
-        #overlayImage {
+        #scanner-container video {
             width: 100%;
             display: block;
         }
 
-        #overlayCanvas {
+        #scanner-container canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+        }
+
+        .scan-line {
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            right: 5%;
+            height: 3px;
+            background: #e94560;
+            box-shadow: 0 0 10px #e94560;
+            transform: translateY(-50%);
+            animation: scan 2s ease-in-out infinite;
+            z-index: 10;
+            pointer-events: none;
+            display: none;
+        }
+
+        .scan-line.active { display: block; }
+
+        @keyframes scan {
+            0%, 100% { top: 30%; }
+            50% { top: 70%; }
         }
 
         .controls {
@@ -98,20 +107,43 @@
         .btn-secondary { background: #0f3460; color: #fff; }
         .btn-danger { background: #c0392b; color: #fff; }
         .btn-success { background: #27ae60; color: #fff; }
-        .btn-warning { background: #f39c12; color: #fff; }
 
-        .detected-list {
+        .mode-toggle {
+            display: flex;
+            margin: 0 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0f3460;
+        }
+
+        .mode-toggle button {
+            flex: 1;
+            border-radius: 0;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            background: #0f3460;
+            color: #888;
+        }
+
+        .mode-toggle button.active {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .pending-section {
             padding: 8px 16px;
             display: none;
         }
 
-        .detected-list h3 {
+        .pending-section.visible { display: block; }
+
+        .pending-section h3 {
             font-size: 0.85rem;
             margin-bottom: 8px;
             color: #e94560;
         }
 
-        .detected-item {
+        .pending-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -119,51 +151,40 @@
             margin-bottom: 6px;
             background: #16213e;
             border-radius: 8px;
-            border-left: 4px solid #e94560;
-            cursor: pointer;
-            transition: background 0.2s;
+            border-left: 4px solid #f39c12;
+            animation: fadeIn 0.3s;
         }
 
-        .detected-item:active {
-            background: #0f3460;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .detected-item .det-info {
-            flex: 1;
-            min-width: 0;
+        .pending-item .p-info { flex: 1; min-width: 0; }
+        .pending-item .p-value { font-family: 'Courier New', monospace; font-size: 0.9rem; word-break: break-all; }
+        .pending-item .p-format { font-size: 0.7rem; color: #888; margin-top: 2px; }
+
+        .pending-item .p-actions {
+            display: flex;
+            gap: 6px;
+            margin-left: 8px;
         }
 
-        .detected-item .det-value {
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-            word-break: break-all;
-        }
-
-        .detected-item .det-format {
-            font-size: 0.7rem;
-            color: #888;
-            margin-top: 2px;
-        }
-
-        .detected-item .det-add {
-            background: #27ae60;
-            color: #fff;
+        .pending-item .p-btn {
             border: none;
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
             font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
-            margin-left: 8px;
         }
 
-        .detected-item.added {
+        .p-btn-add { background: #27ae60; color: #fff; }
+        .p-btn-skip { background: #555; color: #ccc; }
+
+        .pending-item.done {
+            opacity: 0.4;
             border-left-color: #27ae60;
-            opacity: 0.6;
-        }
-
-        .detected-item.added .det-add {
-            background: #555;
         }
 
         .status-msg {
@@ -178,7 +199,7 @@
             margin: 10px 16px;
             padding: 12px;
             border-radius: 8px;
-            border-left: 4px solid #e94560;
+            border-left: 4px solid #27ae60;
             display: none;
         }
 
@@ -275,8 +296,7 @@
         }
 
         .toast.show { opacity: 1; }
-
-        .version { text-align: center; font-size: 0.6rem; color: #444; padding: 4px; }
+        .version { text-align: center; font-size: 0.6rem; color: #444; padding: 2px; }
     </style>
 </head>
 <body>
@@ -285,30 +305,27 @@
         <span class="badge" id="countBadge">0 scans</span>
     </header>
 
-    <div class="scanner-section" id="videoSection">
-        <video id="video" autoplay playsinline></video>
+    <div class="scanner-section">
+        <div id="scanner-container"></div>
+        <div class="scan-line" id="scanLine"></div>
     </div>
-
-    <div class="overlay-container" id="overlayContainer">
-        <img id="overlayImage" alt="captured frame">
-        <canvas id="overlayCanvas"></canvas>
-    </div>
-
-    <canvas id="captureCanvas"></canvas>
 
     <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin</div>
-    <div class="version">v3.0</div>
+    <div class="version">v4.0</div>
 
-    <div class="controls" id="controlsBar">
-        <button class="btn-primary" id="startBtn" onclick="startCamera()">Start Camera</button>
-        <button class="btn-warning" id="captureBtn" onclick="captureAndScan()" style="display:none;">&#128248; Scan All</button>
-        <button class="btn-secondary" id="backBtn" onclick="backToLive()" style="display:none;">&#8592; Back</button>
-        <button class="btn-danger" id="stopBtn" onclick="stopCamera()" style="display:none;">Stop</button>
+    <div class="mode-toggle">
+        <button id="modeAuto" class="active" onclick="setMode('auto')">Auto Add</button>
+        <button id="modeReview" onclick="setMode('review')">Review First</button>
     </div>
 
-    <div class="detected-list" id="detectedList">
-        <h3>Detected Barcodes — tap to add:</h3>
-        <div id="detectedItems"></div>
+    <div class="controls">
+        <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
+        <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" style="display:none;">Stop Camera</button>
+    </div>
+
+    <div class="pending-section" id="pendingSection">
+        <h3>Pending Review — tap to add or skip:</h3>
+        <div id="pendingItems"></div>
     </div>
 
     <div class="last-scan" id="lastScan">
@@ -341,234 +358,155 @@
 
     <script>
         var scans = JSON.parse(localStorage.getItem('barcode_scans') || '[]');
-        var stream = null;
-        var detectedBarcodes = [];
+        var isScanning = false;
+        var mode = 'auto'; // 'auto' or 'review'
+        var pendingBarcodes = [];
+        var lastDetectedValue = '';
+        var lastDetectedTime = 0;
 
         renderList();
         updateBadge();
 
-        function startCamera() {
-            navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-            }).then(function(s) {
-                stream = s;
-                var video = document.getElementById('video');
-                video.srcObject = stream;
-                video.play();
-                document.getElementById('videoSection').style.display = 'block';
-                document.getElementById('overlayContainer').style.display = 'none';
-                document.getElementById('startBtn').style.display = 'none';
-                document.getElementById('captureBtn').style.display = 'inline-block';
-                document.getElementById('stopBtn').style.display = 'inline-block';
-                document.getElementById('backBtn').style.display = 'none';
-                document.getElementById('detectedList').style.display = 'none';
-                document.getElementById('statusMsg').textContent = 'Point at barcodes, then tap "Scan All"';
-            }).catch(function(err) {
-                document.getElementById('statusMsg').textContent = 'Camera error: ' + err.message;
-            });
-        }
-
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(function(t) { t.stop(); });
-                stream = null;
-            }
-            document.getElementById('video').srcObject = null;
-            document.getElementById('videoSection').style.display = 'block';
-            document.getElementById('overlayContainer').style.display = 'none';
-            document.getElementById('startBtn').style.display = 'inline-block';
-            document.getElementById('captureBtn').style.display = 'none';
-            document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('backBtn').style.display = 'none';
-            document.getElementById('detectedList').style.display = 'none';
-            document.getElementById('statusMsg').textContent = 'Camera stopped';
-        }
-
-        function captureAndScan() {
-            var video = document.getElementById('video');
-            var canvas = document.getElementById('captureCanvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            var ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
-
-            var imageDataURL = canvas.toDataURL('image/png');
-
-            // Show captured frame
-            var overlayImg = document.getElementById('overlayImage');
-            overlayImg.src = imageDataURL;
-            document.getElementById('videoSection').style.display = 'none';
-            document.getElementById('overlayContainer').style.display = 'block';
-            document.getElementById('captureBtn').style.display = 'none';
-            document.getElementById('backBtn').style.display = 'inline-block';
-            document.getElementById('statusMsg').textContent = 'Analyzing...';
-
-            // Run Quagga on the static image with multiple passes
-            detectedBarcodes = [];
-            var readers = [
-                "code_128_reader",
-                "ean_reader",
-                "ean_8_reader",
-                "code_39_reader",
-                "code_39_vin_reader",
-                "codabar_reader",
-                "upc_reader",
-                "upc_e_reader",
-                "i2of5_reader",
-                "2of5_reader",
-                "code_93_reader"
-            ];
-
-            Quagga.decodeSingle({
-                src: imageDataURL,
-                numOfWorkers: 0,
-                locate: true,
-                multiple: true,
-                decoder: {
-                    readers: readers,
-                    multiple: true
-                },
-                locator: {
-                    patchSize: "medium",
-                    halfSample: true
-                }
-            }, function(result) {
-                if (result && result.codeResult) {
-                    // Single result
-                    addDetected(result);
-                }
-            });
-
-            // Also try with different patch sizes for better coverage
-            Quagga.decodeSingle({
-                src: imageDataURL,
-                numOfWorkers: 0,
-                locate: true,
-                multiple: true,
-                decoder: {
-                    readers: readers,
-                    multiple: true
-                },
-                locator: {
-                    patchSize: "small",
-                    halfSample: false
-                }
-            }, function(result) {
-                if (result && result.codeResult) {
-                    addDetected(result);
-                }
-            });
-
-            Quagga.decodeSingle({
-                src: imageDataURL,
-                numOfWorkers: 0,
-                locate: true,
-                multiple: true,
-                decoder: {
-                    readers: readers,
-                    multiple: true
-                },
-                locator: {
-                    patchSize: "large",
-                    halfSample: true
-                }
-            }, function(result) {
-                if (result && result.codeResult) {
-                    addDetected(result);
-                }
-                // After all passes, show results
-                setTimeout(showDetectedResults, 500);
-            });
-        }
-
-        function addDetected(result) {
-            if (!result || !result.codeResult || !result.codeResult.code) return;
-
-            var code = result.codeResult.code;
-            var format = result.codeResult.format;
-            var box = result.box || null;
-
-            // Check confidence
-            if (result.codeResult.decodedCodes) {
-                var validCodes = result.codeResult.decodedCodes.filter(function(c) {
-                    return c.error !== undefined && c.error < 0.3;
-                });
-                if (validCodes.length < 2) return;
-            }
-
-            // Avoid duplicates in detected list
-            var exists = detectedBarcodes.find(function(b) { return b.code === code; });
-            if (!exists) {
-                detectedBarcodes.push({ code: code, format: format, box: box, added: false });
+        function setMode(m) {
+            mode = m;
+            document.getElementById('modeAuto').classList.toggle('active', m === 'auto');
+            document.getElementById('modeReview').classList.toggle('active', m === 'review');
+            if (m === 'auto') {
+                document.getElementById('pendingSection').classList.remove('visible');
             }
         }
 
-        function showDetectedResults() {
-            var overlayCanvas = document.getElementById('overlayCanvas');
-            var overlayImg = document.getElementById('overlayImage');
+        function startScanner() {
+            document.getElementById('statusMsg').textContent = 'Starting camera...';
 
-            overlayCanvas.width = overlayImg.naturalWidth;
-            overlayCanvas.height = overlayImg.naturalHeight;
-            var ctx = overlayCanvas.getContext('2d');
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-            // Draw boxes around detected barcodes
-            detectedBarcodes.forEach(function(b, idx) {
-                if (b.box) {
-                    ctx.strokeStyle = '#e94560';
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.moveTo(b.box[0][0], b.box[0][1]);
-                    for (var i = 1; i < b.box.length; i++) {
-                        ctx.lineTo(b.box[i][0], b.box[i][1]);
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner-container'),
+                    constraints: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
                     }
-                    ctx.closePath();
-                    ctx.stroke();
-
-                    // Label
-                    ctx.fillStyle = '#e94560';
-                    ctx.font = 'bold 24px sans-serif';
-                    ctx.fillText((idx + 1) + ': ' + b.code, b.box[0][0], b.box[0][1] - 8);
+                },
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader",
+                        "2of5_reader",
+                        "code_93_reader"
+                    ],
+                    multiple: false
+                },
+                locate: true,
+                frequency: 10
+            }, function(err) {
+                if (err) {
+                    document.getElementById('statusMsg').textContent = 'Camera error: ' + err.message;
+                    return;
                 }
+                Quagga.start();
+                isScanning = true;
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.getElementById('scanLine').classList.add('active');
+                document.getElementById('statusMsg').textContent = 'Scanning... point at barcodes';
             });
 
-            // Show detected list
-            var listEl = document.getElementById('detectedItems');
-            if (detectedBarcodes.length === 0) {
-                listEl.innerHTML = '<div style="color:#888;padding:12px;text-align:center;">No barcodes detected. Try moving closer or adjusting angle.</div>';
-                document.getElementById('statusMsg').textContent = 'No barcodes found — try again';
-            } else {
-                listEl.innerHTML = detectedBarcodes.map(function(b, idx) {
-                    return '<div class="detected-item" id="det-' + idx + '">' +
-                        '<div class="det-info"><div class="det-value">' + escapeHtml(b.code) + '</div>' +
-                        '<div class="det-format">' + b.format.toUpperCase() + '</div></div>' +
-                        '<button class="det-add" onclick="addDetectedToList(' + idx + ')">+ Add</button></div>';
-                }).join('');
-                document.getElementById('statusMsg').textContent = 'Found ' + detectedBarcodes.length + ' barcode(s) — tap to add';
-            }
-            document.getElementById('detectedList').style.display = 'block';
+            Quagga.onDetected(function(result) {
+                var code = result.codeResult.code;
+                var format = result.codeResult.format;
+                var now = Date.now();
+
+                // Debounce same code within 3 seconds
+                if (code === lastDetectedValue && (now - lastDetectedTime) < 3000) {
+                    return;
+                }
+
+                // Confidence check
+                if (result.codeResult.decodedCodes) {
+                    var validCodes = result.codeResult.decodedCodes.filter(function(c) {
+                        return c.error !== undefined && c.error < 0.25;
+                    });
+                    if (validCodes.length < 3) return;
+                }
+
+                lastDetectedValue = code;
+                lastDetectedTime = now;
+
+                if (mode === 'auto') {
+                    addScan(code, format);
+                } else {
+                    addToPending(code, format);
+                }
+            });
         }
 
-        function addDetectedToList(idx) {
-            var b = detectedBarcodes[idx];
-            if (b.added) return;
-            b.added = true;
-            addScan(b.code, b.format);
-            var el = document.getElementById('det-' + idx);
-            if (el) {
-                el.classList.add('added');
-                el.querySelector('.det-add').textContent = '✓';
-            }
+        function stopScanner() {
+            Quagga.stop();
+            isScanning = false;
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('scanLine').classList.remove('active');
+            document.getElementById('statusMsg').textContent = 'Scanner stopped';
         }
 
-        function backToLive() {
-            document.getElementById('overlayContainer').style.display = 'none';
-            document.getElementById('videoSection').style.display = 'block';
-            document.getElementById('captureBtn').style.display = 'inline-block';
-            document.getElementById('backBtn').style.display = 'none';
-            document.getElementById('detectedList').style.display = 'none';
-            document.getElementById('statusMsg').textContent = 'Point at barcodes, then tap "Scan All"';
-            detectedBarcodes = [];
+        function addToPending(code, format) {
+            // Check if already pending or already recorded
+            var alreadyPending = pendingBarcodes.find(function(p) { return p.code === code && !p.done; });
+            var alreadyRecorded = scans.find(function(s) { return s.value === code; });
+            if (alreadyPending || alreadyRecorded) return;
+
+            pendingBarcodes.unshift({ code: code, format: format, done: false, id: Date.now() + '_' + Math.random().toString(36).substr(2,4) });
+            renderPending();
+            if (navigator.vibrate) navigator.vibrate(50);
+            showToast('Found: ' + code);
+        }
+
+        function renderPending() {
+            var section = document.getElementById('pendingSection');
+            var container = document.getElementById('pendingItems');
+            var active = pendingBarcodes.filter(function(p) { return !p.done; });
+
+            if (active.length === 0) {
+                section.classList.remove('visible');
+                return;
+            }
+
+            section.classList.add('visible');
+            container.innerHTML = pendingBarcodes.map(function(p) {
+                if (p.done) return '';
+                return '<div class="pending-item" id="pend-' + p.id + '">' +
+                    '<div class="p-info"><div class="p-value">' + escapeHtml(p.code) + '</div>' +
+                    '<div class="p-format">' + p.format.toUpperCase() + '</div></div>' +
+                    '<div class="p-actions">' +
+                    '<button class="p-btn p-btn-add" onclick="acceptPending(\'' + p.id + '\')">&#10003; Add</button>' +
+                    '<button class="p-btn p-btn-skip" onclick="skipPending(\'' + p.id + '\')">&#10005;</button>' +
+                    '</div></div>';
+            }).join('');
+        }
+
+        function acceptPending(id) {
+            var item = pendingBarcodes.find(function(p) { return p.id === id; });
+            if (!item) return;
+            item.done = true;
+            addScan(item.code, item.format);
+            renderPending();
+        }
+
+        function skipPending(id) {
+            var item = pendingBarcodes.find(function(p) { return p.id === id; });
+            if (!item) return;
+            item.done = true;
+            renderPending();
         }
 
         function addScan(value, format) {
@@ -584,7 +522,7 @@
             renderList();
             updateBadge();
             showLastScan(scan);
-            showToast('Added: ' + value);
+            if (mode === 'auto') showToast('Scanned: ' + value);
             if (navigator.vibrate) navigator.vibrate(100);
         }
 
