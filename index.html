@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Barcode Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -47,23 +48,43 @@
             max-width: 500px;
             margin: 0 auto;
             background: #000;
+            overflow: hidden;
         }
 
-        #video {
+        #scanner-container {
+            width: 100%;
+            min-height: 250px;
+            position: relative;
+        }
+
+        #scanner-container video {
             width: 100%;
             display: block;
         }
 
-        .scan-overlay {
+        #scanner-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .scan-line {
             position: absolute;
             top: 50%;
-            left: 10%;
-            right: 10%;
+            left: 5%;
+            right: 5%;
             height: 3px;
             background: #e94560;
             box-shadow: 0 0 10px #e94560;
             transform: translateY(-50%);
             animation: scan 2s ease-in-out infinite;
+            z-index: 10;
+            pointer-events: none;
+            display: none;
+        }
+
+        .scan-line.active {
+            display: block;
         }
 
         @keyframes scan {
@@ -169,6 +190,7 @@
             overflow-y: auto;
             border-radius: 8px;
             background: #16213e;
+            max-height: 300px;
         }
 
         .scan-item {
@@ -274,6 +296,13 @@
         .manual-input input::placeholder {
             color: #555;
         }
+
+        .status-msg {
+            text-align: center;
+            padding: 8px;
+            font-size: 0.8rem;
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -283,9 +312,11 @@
     </header>
 
     <div class="scanner-section">
-        <video id="video" autoplay playsinline></video>
-        <div class="scan-overlay" id="scanOverlay"></div>
+        <div id="scanner-container"></div>
+        <div class="scan-line" id="scanLine"></div>
     </div>
+
+    <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin scanning</div>
 
     <div class="controls">
         <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
@@ -325,82 +356,94 @@
 
     <script>
         let scans = JSON.parse(localStorage.getItem('barcode_scans') || '[]');
-        let stream = null;
-        let barcodeDetector = null;
-        let scanning = false;
-        let scanInterval = null;
+        let isScanning = false;
+        let lastScannedValue = '';
+        let lastScannedTime = 0;
 
         renderList();
         updateBadge();
 
-        async function startScanner() {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                await video.play();
+        function startScanner() {
+            document.getElementById('statusMsg').textContent = 'Starting camera...';
 
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner-container'),
+                    constraints: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                },
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader",
+                        "2of5_reader",
+                        "code_93_reader"
+                    ],
+                    multiple: false
+                },
+                locate: true,
+                frequency: 10
+            }, function(err) {
+                if (err) {
+                    document.getElementById('statusMsg').textContent = 'Camera error: ' + err.message;
+                    return;
+                }
+                Quagga.start();
+                isScanning = true;
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'inline-block';
-                document.getElementById('scanOverlay').style.display = 'block';
+                document.getElementById('scanLine').classList.add('active');
+                document.getElementById('statusMsg').textContent = 'Scanning... point at a 1D barcode';
+            });
 
-                if ('BarcodeDetector' in window) {
-                    const formats = await BarcodeDetector.getSupportedFormats();
-                    barcodeDetector = new BarcodeDetector({ formats });
-                    scanning = true;
-                    detectBarcode();
-                } else {
-                    showToast('BarcodeDetector not supported. Use manual entry.');
+            Quagga.onDetected(function(result) {
+                var code = result.codeResult.code;
+                var format = result.codeResult.format;
+                var now = Date.now();
+
+                // Debounce: ignore same code within 3 seconds
+                if (code === lastScannedValue && (now - lastScannedTime) < 3000) {
+                    return;
                 }
-            } catch (err) {
-                showToast('Camera access denied: ' + err.message);
-            }
+
+                // Confidence check - require enough valid results
+                if (result.codeResult.decodedCodes) {
+                    var validCodes = result.codeResult.decodedCodes.filter(function(c) {
+                        return c.error !== undefined && c.error < 0.25;
+                    });
+                    if (validCodes.length < 3) return;
+                }
+
+                lastScannedValue = code;
+                lastScannedTime = now;
+                addScan(code, format);
+            });
         }
 
         function stopScanner() {
-            scanning = false;
-            if (scanInterval) {
-                clearTimeout(scanInterval);
-                scanInterval = null;
-            }
-            if (stream) {
-                stream.getTracks().forEach(t => t.stop());
-                stream = null;
-            }
-            const video = document.getElementById('video');
-            video.srcObject = null;
+            Quagga.stop();
+            isScanning = false;
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('scanOverlay').style.display = 'none';
-        }
-
-        async function detectBarcode() {
-            if (!scanning) return;
-            const video = document.getElementById('video');
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                try {
-                    const barcodes = await barcodeDetector.detect(video);
-                    if (barcodes.length > 0) {
-                        for (const barcode of barcodes) {
-                            addScan(barcode.rawValue, barcode.format);
-                        }
-                    }
-                } catch (e) {
-                    // detection error, continue
-                }
-            }
-            scanInterval = setTimeout(detectBarcode, 500);
+            document.getElementById('scanLine').classList.remove('active');
+            document.getElementById('statusMsg').textContent = 'Scanner stopped';
         }
 
         function addScan(value, format) {
-            // Avoid duplicates within last 3 seconds
-            const now = Date.now();
-            const recent = scans.find(s => s.value === value && (now - s.timestamp) < 3000);
-            if (recent) return;
-
-            const scan = {
+            var now = Date.now();
+            var scan = {
                 value: value,
                 format: format || 'manual',
                 timestamp: now,
@@ -413,33 +456,31 @@
             showLastScan(scan);
             showToast('Scanned: ' + value);
 
-            // Vibrate feedback
             if (navigator.vibrate) navigator.vibrate(100);
         }
 
         function addManual() {
-            const input = document.getElementById('manualInput');
-            const val = input.value.trim();
+            var input = document.getElementById('manualInput');
+            var val = input.value.trim();
             if (val) {
                 addScan(val, 'manual');
                 input.value = '';
             }
         }
 
-        // Allow Enter key for manual input
         document.getElementById('manualInput').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') addManual();
         });
 
         function showLastScan(scan) {
-            const el = document.getElementById('lastScan');
+            var el = document.getElementById('lastScan');
             el.classList.add('visible');
             document.getElementById('lastValue').textContent = scan.value;
             document.getElementById('lastFormat').textContent = scan.format.toUpperCase();
         }
 
         function deleteScan(id) {
-            scans = scans.filter(s => s.id !== id);
+            scans = scans.filter(function(s) { return s.id !== id; });
             save();
             renderList();
             updateBadge();
@@ -456,34 +497,25 @@
         }
 
         function renderList() {
-            const list = document.getElementById('scanList');
+            var list = document.getElementById('scanList');
             if (scans.length === 0) {
-                list.innerHTML = `<div class="empty-state" id="emptyState">
-                    <div class="icon">&#128247;</div>
-                    <div>No barcodes scanned yet.<br>Point your camera at a barcode to begin.</div>
-                </div>`;
+                list.innerHTML = '<div class="empty-state"><div class="icon">&#128247;</div><div>No barcodes scanned yet.<br>Point your camera at a barcode to begin.</div></div>';
                 return;
             }
-            list.innerHTML = scans.map(s => `
-                <div class="scan-item">
-                    <div class="info">
-                        <div class="barcode-value">${escapeHtml(s.value)}</div>
-                        <div class="meta">${s.format.toUpperCase()} &bull; ${formatTime(s.timestamp)}</div>
-                    </div>
-                    <button class="delete-btn" onclick="deleteScan('${s.id}')">&times;</button>
-                </div>
-            `).join('');
+            list.innerHTML = scans.map(function(s) {
+                return '<div class="scan-item"><div class="info"><div class="barcode-value">' + escapeHtml(s.value) + '</div><div class="meta">' + s.format.toUpperCase() + ' &bull; ' + formatTime(s.timestamp) + '</div></div><button class="delete-btn" onclick="deleteScan(\'' + s.id + '\')">&times;</button></div>';
+            }).join('');
         }
 
         function exportCSV() {
             if (scans.length === 0) { showToast('Nothing to export'); return; }
-            let csv = 'Barcode,Format,Timestamp\n';
-            scans.forEach(s => {
-                csv += `"${s.value}","${s.format}","${new Date(s.timestamp).toISOString()}"\n`;
+            var csv = 'Barcode,Format,Timestamp\n';
+            scans.forEach(function(s) {
+                csv += '"' + s.value + '","' + s.format + '","' + new Date(s.timestamp).toISOString() + '"\n';
             });
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
+            var blob = new Blob([csv], { type: 'text/csv' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
             a.href = url;
             a.download = 'barcodes_' + new Date().toISOString().slice(0,10) + '.csv';
             a.click();
@@ -493,8 +525,8 @@
 
         function copyAll() {
             if (scans.length === 0) { showToast('Nothing to copy'); return; }
-            const text = scans.map(s => s.value).join('\n');
-            navigator.clipboard.writeText(text).then(() => {
+            var text = scans.map(function(s) { return s.value; }).join('\n');
+            navigator.clipboard.writeText(text).then(function() {
                 showToast('Copied ' + scans.length + ' barcodes!');
             });
         }
@@ -508,21 +540,21 @@
         }
 
         function formatTime(ts) {
-            const d = new Date(ts);
+            var d = new Date(ts);
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString();
         }
 
         function escapeHtml(str) {
-            const div = document.createElement('div');
+            var div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
         }
 
         function showToast(msg) {
-            const t = document.getElementById('toast');
+            var t = document.getElementById('toast');
             t.textContent = msg;
             t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 2000);
+            setTimeout(function() { t.classList.remove('show'); }, 2000);
         }
     </script>
 </body>
