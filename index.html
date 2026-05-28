@@ -311,7 +311,7 @@
     </div>
 
     <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin</div>
-    <div class="version">v4.0</div>
+    <div class="version">v4.1</div>
 
     <div class="mode-toggle">
         <button id="modeAuto" class="active" onclick="setMode('auto')">Auto Add</button>
@@ -320,7 +320,8 @@
 
     <div class="controls">
         <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
-        <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" style="display:none;">Stop Camera</button>
+        <button class="btn-success" id="reviewBtn" onclick="stopAndReview()" style="display:none;">&#9724; Stop & Review</button>
+        <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" style="display:none;">Stop</button>
     </div>
 
     <div class="pending-section" id="pendingSection">
@@ -417,8 +418,16 @@
                 isScanning = true;
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'inline-block';
+                if (mode === 'review') {
+                    document.getElementById('reviewBtn').style.display = 'inline-block';
+                    pendingBarcodes = [];
+                    renderPending();
+                    document.getElementById('statusMsg').textContent = 'Scanning... sweep across barcodes, then tap "Stop & Review"';
+                } else {
+                    document.getElementById('reviewBtn').style.display = 'none';
+                    document.getElementById('statusMsg').textContent = 'Scanning... barcodes auto-added';
+                }
                 document.getElementById('scanLine').classList.add('active');
-                document.getElementById('statusMsg').textContent = 'Scanning... point at barcodes';
             });
 
             Quagga.onDetected(function(result) {
@@ -455,8 +464,25 @@
             isScanning = false;
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('reviewBtn').style.display = 'none';
             document.getElementById('scanLine').classList.remove('active');
             document.getElementById('statusMsg').textContent = 'Scanner stopped';
+        }
+
+        function stopAndReview() {
+            Quagga.stop();
+            isScanning = false;
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('reviewBtn').style.display = 'none';
+            document.getElementById('scanLine').classList.remove('active');
+            var active = pendingBarcodes.filter(function(p) { return !p.done; });
+            if (active.length > 0) {
+                document.getElementById('statusMsg').textContent = 'Review ' + active.length + ' barcode(s) below:';
+            } else {
+                document.getElementById('statusMsg').textContent = 'No barcodes detected. Try again.';
+            }
+            renderPending();
         }
 
         function addToPending(code, format) {
