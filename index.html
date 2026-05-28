@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Barcode Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -44,12 +44,43 @@
             overflow: hidden;
         }
 
-        #reader {
+        #scanner-container {
             width: 100%;
+            min-height: 250px;
+            position: relative;
         }
 
-        #reader video {
-            width: 100% !important;
+        #scanner-container video {
+            width: 100%;
+            display: block;
+        }
+
+        #scanner-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .scan-line {
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            right: 5%;
+            height: 3px;
+            background: #e94560;
+            box-shadow: 0 0 10px #e94560;
+            transform: translateY(-50%);
+            animation: scan 2s ease-in-out infinite;
+            z-index: 10;
+            pointer-events: none;
+            display: none;
+        }
+
+        .scan-line.active { display: block; }
+
+        @keyframes scan {
+            0%, 100% { top: 30%; }
+            50% { top: 70%; }
         }
 
         .controls {
@@ -93,11 +124,11 @@
             margin-bottom: 12px;
         }
 
-        .select-box .radio-list {
+        .radio-list {
             list-style: none;
         }
 
-        .select-box .radio-list li {
+        .radio-list li {
             padding: 12px;
             margin-bottom: 8px;
             background: #1a1a2e;
@@ -110,12 +141,12 @@
             transition: border-color 0.2s;
         }
 
-        .select-box .radio-list li.selected {
+        .radio-list li.selected {
             border-color: #e94560;
             background: #0f3460;
         }
 
-        .select-box .radio-list li .radio-dot {
+        .radio-list li .radio-dot {
             width: 20px;
             height: 20px;
             border-radius: 50%;
@@ -126,11 +157,11 @@
             flex-shrink: 0;
         }
 
-        .select-box .radio-list li.selected .radio-dot {
+        .radio-list li.selected .radio-dot {
             border-color: #e94560;
         }
 
-        .select-box .radio-list li.selected .radio-dot::after {
+        .radio-list li.selected .radio-dot::after {
             content: '';
             width: 10px;
             height: 10px;
@@ -138,7 +169,7 @@
             background: #e94560;
         }
 
-        .select-box .radio-list li .barcode-text {
+        .radio-list li .barcode-text {
             font-family: 'Courier New', monospace;
             font-size: 1rem;
             word-break: break-all;
@@ -155,6 +186,16 @@
             padding: 12px;
             font-size: 0.95rem;
         }
+
+        .found-count {
+            text-align: center;
+            padding: 6px;
+            font-size: 0.8rem;
+            color: #f39c12;
+            display: none;
+        }
+
+        .found-count.visible { display: block; }
 
         .status-msg {
             text-align: center;
@@ -275,11 +316,13 @@
     </header>
 
     <div class="scanner-section">
-        <div id="reader"></div>
+        <div id="scanner-container"></div>
+        <div class="scan-line" id="scanLine"></div>
     </div>
 
     <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin</div>
-    <div class="version">v6.1</div>
+    <div class="found-count" id="foundCount"></div>
+    <div class="version">v7.0</div>
 
     <div class="controls">
         <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
@@ -325,12 +368,11 @@
 
     <script>
         var scans = JSON.parse(localStorage.getItem('barcode_scans') || '[]');
-        var html5QrCode = null;
         var isScanning = false;
         var detectedCodes = [];
-        var selectedIndex = -1;
-        var collectMode = true;
-        var collectTimeout = null;
+        var selectedIndex = 0;
+        var collectTimer = null;
+        var lastNewDetect = 0;
 
         renderList();
         updateBadge();
@@ -338,100 +380,118 @@
         function startScanner() {
             document.getElementById('statusMsg').textContent = 'Starting camera...';
             document.getElementById('selectBox').classList.remove('visible');
+            document.getElementById('foundCount').classList.remove('visible');
             detectedCodes = [];
-            selectedIndex = -1;
-            collectMode = true;
 
-            html5QrCode = new Html5Qrcode("reader");
-
-            var config = {
-                fps: 10,
-                qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    var minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                    var size = Math.floor(minEdge * 0.8);
-                    return { width: size, height: Math.floor(size * 0.6) };
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner-container'),
+                    constraints: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
                 },
-                formatsToSupport: [
-                    Html5QrcodeSupportedFormats.CODE_128,
-                    Html5QrcodeSupportedFormats.CODE_39,
-                    Html5QrcodeSupportedFormats.CODE_93,
-                    Html5QrcodeSupportedFormats.EAN_13,
-                    Html5QrcodeSupportedFormats.EAN_8,
-                    Html5QrcodeSupportedFormats.UPC_A,
-                    Html5QrcodeSupportedFormats.UPC_E,
-                    Html5QrcodeSupportedFormats.ITF,
-                    Html5QrcodeSupportedFormats.CODABAR
-                ]
-            };
-
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                function(decodedText, decodedResult) {
-                    if (!collectMode) return;
-                    onBarcodeDetected(decodedText, decodedResult);
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader",
+                        "2of5_reader",
+                        "code_93_reader"
+                    ],
+                    multiple: false
                 },
-                function(errorMessage) {
-                    // scan error, ignore
+                locate: true,
+                frequency: 10
+            }, function(err) {
+                if (err) {
+                    document.getElementById('statusMsg').textContent = 'Camera error: ' + err.message;
+                    return;
                 }
-            ).then(function() {
+                Quagga.start();
                 isScanning = true;
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'inline-block';
-                document.getElementById('statusMsg').textContent = 'Scanning... hold steady over barcodes';
-                startCollectTimer();
-            }).catch(function(err) {
-                document.getElementById('statusMsg').textContent = 'Camera error: ' + err;
-                document.getElementById('startBtn').style.display = 'inline-block';
+                document.getElementById('scanLine').classList.add('active');
+                document.getElementById('statusMsg').textContent = 'Scanning... slowly sweep across barcodes';
+                startCollecting();
+            });
+
+            Quagga.onDetected(function(result) {
+                var code = result.codeResult.code;
+                var format = result.codeResult.format;
+
+                // Confidence check
+                if (result.codeResult.decodedCodes) {
+                    var validCodes = result.codeResult.decodedCodes.filter(function(c) {
+                        return c.error !== undefined && c.error < 0.25;
+                    });
+                    if (validCodes.length < 3) return;
+                }
+
+                // Add if not already detected
+                var exists = detectedCodes.find(function(c) { return c.code === code; });
+                if (!exists) {
+                    detectedCodes.push({ code: code, format: format });
+                    lastNewDetect = Date.now();
+                    if (navigator.vibrate) navigator.vibrate(50);
+                    updateFoundCount();
+                }
             });
         }
 
-        function startCollectTimer() {
-            // Collect barcodes for 3 seconds, then show selection
-            if (collectTimeout) clearTimeout(collectTimeout);
-            collectTimeout = setTimeout(function() {
+        function startCollecting() {
+            // Check every second: if we have codes and haven't found a new one in 2 sec, show selection
+            collectTimer = setInterval(function() {
                 if (detectedCodes.length > 0) {
-                    showSelection();
-                } else {
-                    // Keep trying
-                    startCollectTimer();
+                    var timeSinceLast = Date.now() - lastNewDetect;
+                    if (timeSinceLast > 2000) {
+                        // Done collecting — show selection
+                        clearInterval(collectTimer);
+                        showSelection();
+                    }
                 }
-            }, 3000);
+            }, 500);
         }
 
-        function onBarcodeDetected(text, result) {
-            // Add to detected list if not already there
-            var exists = detectedCodes.find(function(c) { return c.text === text; });
-            if (!exists) {
-                var format = result.result.format ? result.result.format.formatName : 'UNKNOWN';
-                detectedCodes.push({ text: text, format: format });
-                if (navigator.vibrate) navigator.vibrate(50);
-
-                // Reset timer — give more time to find additional barcodes
-                if (collectTimeout) clearTimeout(collectTimeout);
-                collectTimeout = setTimeout(function() {
-                    showSelection();
-                }, 2000);
-            }
+        function updateFoundCount() {
+            var el = document.getElementById('foundCount');
+            el.textContent = 'Found ' + detectedCodes.length + ' barcode(s)... keep scanning or wait';
+            el.classList.add('visible');
         }
 
         function showSelection() {
-            collectMode = false;
+            document.getElementById('foundCount').classList.remove('visible');
 
-            // If only one barcode found, auto-add it
+            // If only 1 found, auto-add
             if (detectedCodes.length === 1) {
-                addScan(detectedCodes[0].text, detectedCodes[0].format);
+                addScan(detectedCodes[0].code, detectedCodes[0].format);
+                document.getElementById('statusMsg').textContent = 'Added! Scanning for more...';
                 detectedCodes = [];
-                collectMode = true;
-                startCollectTimer();
+                startCollecting();
                 return;
             }
 
-            // Multiple barcodes — show selection UI
+            // Multiple found — show radio selection
+            Quagga.stop();
+            isScanning = false;
+            document.getElementById('scanLine').classList.remove('active');
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('startBtn').style.display = 'none';
+
             selectedIndex = 0;
             renderRadioList();
             document.getElementById('selectBox').classList.add('visible');
-            document.getElementById('statusMsg').textContent = 'Multiple barcodes found — select one:';
+            document.getElementById('statusMsg').textContent = 'Select the barcode you want:';
         }
 
         function renderRadioList() {
@@ -440,7 +500,7 @@
                 var sel = idx === selectedIndex ? ' selected' : '';
                 return '<li class="' + sel + '" onclick="pickRadio(' + idx + ')">' +
                     '<div class="radio-dot"></div>' +
-                    '<span class="barcode-text">' + escapeHtml(c.text) + '</span></li>';
+                    '<span class="barcode-text">' + escapeHtml(c.code) + '</span></li>';
             }).join('');
         }
 
@@ -452,33 +512,36 @@
         function selectBarcode() {
             if (selectedIndex < 0 || selectedIndex >= detectedCodes.length) return;
             var chosen = detectedCodes[selectedIndex];
-            addScan(chosen.text, chosen.format);
+            addScan(chosen.code, chosen.format);
             document.getElementById('selectBox').classList.remove('visible');
+            document.getElementById('statusMsg').textContent = 'Added! Tap Start Camera to scan more.';
+            document.getElementById('startBtn').style.display = 'inline-block';
             detectedCodes = [];
-            collectMode = true;
-            startCollectTimer();
-            document.getElementById('statusMsg').textContent = 'Added! Scanning for more...';
         }
 
         function scanAgain() {
             document.getElementById('selectBox').classList.remove('visible');
             detectedCodes = [];
-            selectedIndex = -1;
-            collectMode = true;
-            startCollectTimer();
-            document.getElementById('statusMsg').textContent = 'Scanning again... hold steady';
+            selectedIndex = 0;
+            startScanner();
         }
 
         function stopScanner() {
-            if (collectTimeout) clearTimeout(collectTimeout);
-            collectMode = false;
-            if (html5QrCode && isScanning) {
-                html5QrCode.stop().then(function() {
-                    isScanning = false;
-                    document.getElementById('startBtn').style.display = 'inline-block';
-                    document.getElementById('stopBtn').style.display = 'none';
-                    document.getElementById('statusMsg').textContent = 'Scanner stopped';
-                });
+            if (collectTimer) clearInterval(collectTimer);
+            Quagga.stop();
+            isScanning = false;
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('scanLine').classList.remove('active');
+            document.getElementById('foundCount').classList.remove('visible');
+            document.getElementById('statusMsg').textContent = 'Scanner stopped';
+
+            // If we collected some, show selection anyway
+            if (detectedCodes.length > 1) {
+                showSelection();
+            } else if (detectedCodes.length === 1) {
+                addScan(detectedCodes[0].code, detectedCodes[0].format);
+                detectedCodes = [];
             }
         }
 
