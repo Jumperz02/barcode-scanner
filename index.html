@@ -89,7 +89,6 @@
             padding: 12px 16px;
             justify-content: center;
             background: #16213e;
-            flex-wrap: wrap;
         }
 
         button {
@@ -108,83 +107,47 @@
         .btn-danger { background: #c0392b; color: #fff; }
         .btn-success { background: #27ae60; color: #fff; }
 
-        .mode-toggle {
-            display: flex;
-            margin: 0 16px;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #0f3460;
-        }
-
-        .mode-toggle button {
-            flex: 1;
-            border-radius: 0;
-            padding: 8px 12px;
-            font-size: 0.8rem;
-            background: #0f3460;
-            color: #888;
-        }
-
-        .mode-toggle button.active {
-            background: #e94560;
-            color: #fff;
-        }
-
-        .pending-section {
-            padding: 8px 16px;
-            display: none;
-        }
-
-        .pending-section.visible { display: block; }
-
-        .pending-section h3 {
-            font-size: 0.85rem;
-            margin-bottom: 8px;
-            color: #e94560;
-        }
-
-        .pending-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
-            margin-bottom: 6px;
+        .confirm-box {
+            margin: 10px 16px;
+            padding: 16px;
             background: #16213e;
-            border-radius: 8px;
-            border-left: 4px solid #f39c12;
-            animation: fadeIn 0.3s;
+            border-radius: 10px;
+            border: 2px solid #f39c12;
+            display: none;
+            text-align: center;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
+        .confirm-box.visible { display: block; }
+
+        .confirm-box .confirm-label {
+            font-size: 0.75rem;
+            color: #f39c12;
+            text-transform: uppercase;
+            margin-bottom: 6px;
         }
 
-        .pending-item .p-info { flex: 1; min-width: 0; }
-        .pending-item .p-value { font-family: 'Courier New', monospace; font-size: 0.9rem; word-break: break-all; }
-        .pending-item .p-format { font-size: 0.7rem; color: #888; margin-top: 2px; }
+        .confirm-box .confirm-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.3rem;
+            word-break: break-all;
+            margin-bottom: 4px;
+        }
 
-        .pending-item .p-actions {
+        .confirm-box .confirm-format {
+            font-size: 0.7rem;
+            color: #888;
+            margin-bottom: 12px;
+        }
+
+        .confirm-box .confirm-actions {
             display: flex;
-            gap: 6px;
-            margin-left: 8px;
+            gap: 10px;
+            justify-content: center;
         }
 
-        .pending-item .p-btn {
-            border: none;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .p-btn-add { background: #27ae60; color: #fff; }
-        .p-btn-skip { background: #555; color: #ccc; }
-
-        .pending-item.done {
-            opacity: 0.4;
-            border-left-color: #27ae60;
+        .confirm-box .confirm-actions button {
+            padding: 12px 24px;
+            font-size: 1rem;
         }
 
         .status-msg {
@@ -311,22 +274,21 @@
     </div>
 
     <div class="status-msg" id="statusMsg">Tap "Start Camera" to begin</div>
-    <div class="version">v4.1</div>
-
-    <div class="mode-toggle">
-        <button id="modeAuto" class="active" onclick="setMode('auto')">Auto Add</button>
-        <button id="modeReview" onclick="setMode('review')">Review First</button>
-    </div>
+    <div class="version">v5.0</div>
 
     <div class="controls">
         <button class="btn-primary" id="startBtn" onclick="startScanner()">Start Camera</button>
-        <button class="btn-success" id="reviewBtn" onclick="stopAndReview()" style="display:none;">&#9724; Stop & Review</button>
         <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" style="display:none;">Stop</button>
     </div>
 
-    <div class="pending-section" id="pendingSection">
-        <h3>Pending Review — tap to add or skip:</h3>
-        <div id="pendingItems"></div>
+    <div class="confirm-box" id="confirmBox">
+        <div class="confirm-label">Detected Barcode</div>
+        <div class="confirm-value" id="confirmValue"></div>
+        <div class="confirm-format" id="confirmFormat"></div>
+        <div class="confirm-actions">
+            <button class="btn-success" onclick="confirmAdd()">&#10003; Add</button>
+            <button class="btn-danger" onclick="confirmSkip()">&#10005; Skip</button>
+        </div>
     </div>
 
     <div class="last-scan" id="lastScan">
@@ -360,22 +322,14 @@
     <script>
         var scans = JSON.parse(localStorage.getItem('barcode_scans') || '[]');
         var isScanning = false;
-        var mode = 'auto'; // 'auto' or 'review'
-        var pendingBarcodes = [];
-        var lastDetectedValue = '';
-        var lastDetectedTime = 0;
+        var paused = false;
+        var pendingCode = null;
+        var pendingFormat = null;
+        var lastSkipped = '';
+        var lastSkippedTime = 0;
 
         renderList();
         updateBadge();
-
-        function setMode(m) {
-            mode = m;
-            document.getElementById('modeAuto').classList.toggle('active', m === 'auto');
-            document.getElementById('modeReview').classList.toggle('active', m === 'review');
-            if (m === 'auto') {
-                document.getElementById('pendingSection').classList.remove('visible');
-            }
-        }
 
         function startScanner() {
             document.getElementById('statusMsg').textContent = 'Starting camera...';
@@ -416,27 +370,22 @@
                 }
                 Quagga.start();
                 isScanning = true;
+                paused = false;
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'inline-block';
-                if (mode === 'review') {
-                    document.getElementById('reviewBtn').style.display = 'inline-block';
-                    pendingBarcodes = [];
-                    renderPending();
-                    document.getElementById('statusMsg').textContent = 'Scanning... sweep across barcodes, then tap "Stop & Review"';
-                } else {
-                    document.getElementById('reviewBtn').style.display = 'none';
-                    document.getElementById('statusMsg').textContent = 'Scanning... barcodes auto-added';
-                }
                 document.getElementById('scanLine').classList.add('active');
+                document.getElementById('statusMsg').textContent = 'Point at a barcode...';
             });
 
             Quagga.onDetected(function(result) {
+                if (paused) return;
+
                 var code = result.codeResult.code;
                 var format = result.codeResult.format;
                 var now = Date.now();
 
-                // Debounce same code within 3 seconds
-                if (code === lastDetectedValue && (now - lastDetectedTime) < 3000) {
+                // Don't re-show a code that was just skipped (within 5 sec)
+                if (code === lastSkipped && (now - lastSkippedTime) < 5000) {
                     return;
                 }
 
@@ -448,91 +397,50 @@
                     if (validCodes.length < 3) return;
                 }
 
-                lastDetectedValue = code;
-                lastDetectedTime = now;
-
-                if (mode === 'auto') {
-                    addScan(code, format);
-                } else {
-                    addToPending(code, format);
-                }
+                // Pause scanning and show confirmation
+                paused = true;
+                pendingCode = code;
+                pendingFormat = format;
+                showConfirm(code, format);
+                if (navigator.vibrate) navigator.vibrate(50);
             });
         }
 
         function stopScanner() {
             Quagga.stop();
             isScanning = false;
+            paused = false;
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('reviewBtn').style.display = 'none';
             document.getElementById('scanLine').classList.remove('active');
+            document.getElementById('confirmBox').classList.remove('visible');
             document.getElementById('statusMsg').textContent = 'Scanner stopped';
         }
 
-        function stopAndReview() {
-            Quagga.stop();
-            isScanning = false;
-            document.getElementById('startBtn').style.display = 'inline-block';
-            document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('reviewBtn').style.display = 'none';
-            document.getElementById('scanLine').classList.remove('active');
-            var active = pendingBarcodes.filter(function(p) { return !p.done; });
-            if (active.length > 0) {
-                document.getElementById('statusMsg').textContent = 'Review ' + active.length + ' barcode(s) below:';
-            } else {
-                document.getElementById('statusMsg').textContent = 'No barcodes detected. Try again.';
-            }
-            renderPending();
+        function showConfirm(code, format) {
+            document.getElementById('confirmValue').textContent = code;
+            document.getElementById('confirmFormat').textContent = format.toUpperCase();
+            document.getElementById('confirmBox').classList.add('visible');
+            document.getElementById('statusMsg').textContent = 'Is this the right barcode?';
         }
 
-        function addToPending(code, format) {
-            // Check if already pending or already recorded
-            var alreadyPending = pendingBarcodes.find(function(p) { return p.code === code && !p.done; });
-            var alreadyRecorded = scans.find(function(s) { return s.value === code; });
-            if (alreadyPending || alreadyRecorded) return;
-
-            pendingBarcodes.unshift({ code: code, format: format, done: false, id: Date.now() + '_' + Math.random().toString(36).substr(2,4) });
-            renderPending();
-            if (navigator.vibrate) navigator.vibrate(50);
-            showToast('Found: ' + code);
+        function confirmAdd() {
+            addScan(pendingCode, pendingFormat);
+            document.getElementById('confirmBox').classList.remove('visible');
+            paused = false;
+            pendingCode = null;
+            pendingFormat = null;
+            document.getElementById('statusMsg').textContent = 'Added! Point at next barcode...';
         }
 
-        function renderPending() {
-            var section = document.getElementById('pendingSection');
-            var container = document.getElementById('pendingItems');
-            var active = pendingBarcodes.filter(function(p) { return !p.done; });
-
-            if (active.length === 0) {
-                section.classList.remove('visible');
-                return;
-            }
-
-            section.classList.add('visible');
-            container.innerHTML = pendingBarcodes.map(function(p) {
-                if (p.done) return '';
-                return '<div class="pending-item" id="pend-' + p.id + '">' +
-                    '<div class="p-info"><div class="p-value">' + escapeHtml(p.code) + '</div>' +
-                    '<div class="p-format">' + p.format.toUpperCase() + '</div></div>' +
-                    '<div class="p-actions">' +
-                    '<button class="p-btn p-btn-add" onclick="acceptPending(\'' + p.id + '\')">&#10003; Add</button>' +
-                    '<button class="p-btn p-btn-skip" onclick="skipPending(\'' + p.id + '\')">&#10005;</button>' +
-                    '</div></div>';
-            }).join('');
-        }
-
-        function acceptPending(id) {
-            var item = pendingBarcodes.find(function(p) { return p.id === id; });
-            if (!item) return;
-            item.done = true;
-            addScan(item.code, item.format);
-            renderPending();
-        }
-
-        function skipPending(id) {
-            var item = pendingBarcodes.find(function(p) { return p.id === id; });
-            if (!item) return;
-            item.done = true;
-            renderPending();
+        function confirmSkip() {
+            lastSkipped = pendingCode;
+            lastSkippedTime = Date.now();
+            document.getElementById('confirmBox').classList.remove('visible');
+            paused = false;
+            pendingCode = null;
+            pendingFormat = null;
+            document.getElementById('statusMsg').textContent = 'Skipped. Point at the correct barcode...';
         }
 
         function addScan(value, format) {
@@ -548,7 +456,7 @@
             renderList();
             updateBadge();
             showLastScan(scan);
-            if (mode === 'auto') showToast('Scanned: ' + value);
+            showToast('Added: ' + value);
             if (navigator.vibrate) navigator.vibrate(100);
         }
 
